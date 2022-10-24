@@ -453,3 +453,11 @@ extern "C"
   LogInfo("ConfigureSslContext is successful");
   return 1;
 }
+
+extern "C"
+#ifdef _WIN32
+    __declspec(dllexport)
+#endif
+void PrintOpenSSLVersion() {
+  std::cout << "Using OpenSSL version: " << OpenSSL_version(OPENSSL_VERSION) << std::endl;
+}
