@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+#include <openssl/opensslv.h>
 #include <openssl/bio.h>
 #include <openssl/crypto.h>
 #include <openssl/ec.h>
@@ -431,6 +432,8 @@ extern "C"
   if (!ctx) {
     return 0;
   }
+
+  std::cout << "Using OpenSSL version: " << OpenSSL_version(OPENSSL_VERSION) << std::endl;
 
   ENGINE *custom_engine = CreateEngineOnceGlobally();
   if (!custom_engine) {
