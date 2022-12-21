@@ -26,7 +26,7 @@ set(CMAKE_CXX_STANDARD_LIBRARIES "-static-libgcc -static-libstdc++ -lwsock32 -lw
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-Bstatic,--whole-archive -lwinpthread -Wl,--no-whole-archive")
 endif()
 
-find_package(OpenSSL 1.1.1 EXACT REQUIRED)
+find_package(OpenSSL 3.0.7 EXACT REQUIRED)
 
 add_library(tls_offload SHARED
   src/offload.cpp
