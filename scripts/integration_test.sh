@@ -6,7 +6,7 @@
 set -eu
 
 function check_dependencies() {
-  if ! command -v python &> /dev/null
+  if ! command -v /usr/local/google/home/clundin/code/enterprise-certificate-offload/Python-3.10.0/python &> /dev/null
   then
       echo "Please install Python before running this script."
       exit
@@ -23,8 +23,8 @@ function start_local_mtls_server() {
 }
 
 function run_integration_test() {
-  python -m pip install -r tests/testing_utils/requirements.txt > /dev/null
-  python -m pytest tests/integration_test.py
+  /usr/local/google/home/clundin/code/enterprise-certificate-offload/Python-3.10.0/python -m pip install -r tests/testing_utils/requirements.txt > /dev/null
+  gdb -ex 'b ConfigureSslContext' -ex 'r' --args /usr/local/google/home/clundin/code/enterprise-certificate-offload/Python-3.10.0/python -m pytest tests/integration_test.py
 }
 
 check_dependencies
