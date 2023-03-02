@@ -56,3 +56,11 @@ Footer
 
 # Misc
 local_mtls_server_logs.txt
+.ccls-cache/
+Python-3.10.0.tgz
+Python-3.10.0/
+openssl-3.0.7.tar.gz
+openssl-openssl-3.0.7/
+provider.txt
+test.sh
+
