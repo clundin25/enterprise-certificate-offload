@@ -9,6 +9,7 @@
 #include <openssl/err.h>
 #include <openssl/evp.h>
 #include <openssl/pem.h>
+#include <openssl/rsa.h>
 #include <openssl/ssl.h>
 #include <openssl/x509.h>
 #include <stdio.h>
@@ -75,7 +76,7 @@ void LogInfo(const std::string &message) {
 
 // "ex data" will be allocated once globally by `CreateEngineOnceGlobally`
 // method.
-int g_key_index = -1;
+int g_rsa_ex_index = -1, g_ec_ex_index = -1;
 
 void FreeExData(void *parent, void *ptr, CRYPTO_EX_DATA *ad, int idx, long argl,
                 void *argp) {
@@ -88,11 +89,32 @@ void FreeExData(void *parent, void *ptr, CRYPTO_EX_DATA *ad, int idx, long argl,
 }
 
 bool SetCustomKey(EVP_PKEY *pkey, CustomKey *key) {
-    return EVP_PKEY_set_ex_data(pkey, g_key_index, key);
+  if (EVP_PKEY_id(pkey) == EVP_PKEY_RSA) {
+    LogInfo("setting RSA custom key");
+    RSA *rsa = EVP_PKEY_get0_RSA(pkey);
+    return rsa && RSA_set_ex_data(rsa, g_rsa_ex_index, key);
+  }
+  if (EVP_PKEY_id(pkey) == EVP_PKEY_EC) {
+    LogInfo("setting EC custom key");
+    EC_KEY *ec_key = EVP_PKEY_get0_EC_KEY(pkey);
+    return ec_key && EC_KEY_set_ex_data(ec_key, g_ec_ex_index, key);
+  }
+  return false;
 }
 
 CustomKey *GetCustomKey(EVP_PKEY *pkey) {
-  return static_cast<CustomKey *>(EVP_PKEY_get_ex_data(pkey, g_key_index));
+  if (EVP_PKEY_id(pkey) == EVP_PKEY_RSA) {
+    const RSA *rsa = EVP_PKEY_get0_RSA(pkey);
+    return rsa ? static_cast<CustomKey *>(RSA_get_ex_data(rsa, g_rsa_ex_index))
+               : nullptr;
+  }
+  if (EVP_PKEY_id(pkey) == EVP_PKEY_EC) {
+    const EC_KEY *ec_key = EVP_PKEY_get0_EC_KEY(pkey);
+    return ec_key ? static_cast<CustomKey *>(
+                        EC_KEY_get_ex_data(ec_key, g_ec_ex_index))
+                  : nullptr;
+  }
+  return nullptr;
 }
 
 // Part 2. Next we make an `EVP_PKEY_METHOD` that can call `CustomKey::Sign`.
@@ -352,9 +374,11 @@ ENGINE *CreateEngineHelper() {
 
   // Allocate "ex data". We need a way to attach `CustomKey` to `EVP_PKEY`s that
   // we will hand to OpenSSL. OpenSSL does this with "ex data"
-  g_key_index =
-      EVP_PKEY_get_ex_new_index(0, nullptr, nullptr, nullptr, FreeExData);
-  if (g_key_index < 0) {
+  g_rsa_ex_index =
+      RSA_get_ex_new_index(0, nullptr, nullptr, nullptr, FreeExData);
+  g_ec_ex_index =
+      EC_KEY_get_ex_new_index(0, nullptr, nullptr, nullptr, FreeExData);
+  if (g_rsa_ex_index < 0 || g_ec_ex_index < 0) {
     LogInfo("Error allocating ex data");
     return nullptr;
   }
@@ -426,182 +450,3 @@ extern "C"
   LogInfo("ConfigureSslContext is successful");
   return 1;
 }
-
-
-#include <malloc.h>
-#include <openssl/core.h>
-#include <openssl/core_dispatch.h>
-
-/* Errors used in this provider */
-#define E_MALLOC       1
-
-static const OSSL_ITEM reasons[] = {
-    { E_MALLOC, (void*)"memory allocation failure" },
-    { 0, NULL } /* Termination */
-};
-
-typedef void *(OSSL_FUNC_bar_newctx_fn)(void *provctx);
-typedef void (OSSL_FUNC_bar_freectx_fn)(void *ctx);
-typedef int (OSSL_FUNC_bar_init_fn)(void *ctx);
-typedef int (OSSL_FUNC_bar_update_fn)(void *ctx, unsigned char *in, size_t inl);
-typedef int (OSSL_FUNC_bar_final_fn)(void *ctx);
-
-/*
- * To ensure we get the function signature right, forward declare
- * them using function types provided by openssl/core_dispatch.h
- */
-OSSL_FUNC_bar_newctx_fn foo_newctx;
-OSSL_FUNC_bar_freectx_fn foo_freectx;
-OSSL_FUNC_bar_init_fn foo_init;
-OSSL_FUNC_bar_update_fn foo_update;
-OSSL_FUNC_bar_final_fn foo_final;
-
-OSSL_FUNC_provider_query_operation_fn p_query;
-OSSL_FUNC_provider_get_reason_strings_fn p_reasons;
-OSSL_FUNC_provider_teardown_fn p_teardown;
-
-OSSL_provider_init_fn OSSL_provider_init;
-
-/* Provider context */
-struct prov_ctx_st {
-    OSSL_CORE_HANDLE *handle;
-};
-
-/* operation context for the algorithm FOO */
-struct foo_ctx_st {
-    struct prov_ctx_st *provctx;
-    int b;
-};
-
-void *foo_newctx(void *provctx)
-{
-    struct foo_ctx_st *fooctx = (struct foo_ctx_st*)malloc(sizeof(*fooctx));
-
-    if (fooctx != NULL)
-        fooctx->provctx = (struct prov_ctx_st *)provctx;
-    else
-        //c_put_error(provctx->handle, E_MALLOC, __FILE__, __LINE__);
-    return fooctx;
-}
-
-void foo_freectx(void *fooctx)
-{
-    free(fooctx);
-}
-
-int foo_init(void *vfooctx)
-{
-    struct foo_ctx_st *fooctx = (struct foo_ctx_st *)vfooctx;
-
-    fooctx->b = 0x33;
-}
-
-int foo_update(void *vfooctx, unsigned char *in, size_t inl)
-{
-    struct foo_ctx_st *fooctx = (struct foo_ctx_st *)vfooctx;
-
-    /* did you expect something serious? */
-    if (inl == 0)
-        return 1;
-    for (; inl-- > 0; in++)
-        *in ^= fooctx->b;
-    return 1;
-}
-
-int foo_final(void *vfooctx)
-{
-    struct foo_ctx_st *fooctx = (struct foo_ctx_st *)vfooctx;
-
-    fooctx->b = 0x66;
-}
-
-#define OSSL_OP_BAR            4711
-#define OSSL_FUNC_BAR_NEWCTX      1
-OSSL_FUNC_bar_newctx_fn * OSSL_FUNC_bar_newctx(const OSSL_DISPATCH *opf)
-{ return (OSSL_FUNC_bar_newctx_fn *)opf->function; }
-
-#define OSSL_FUNC_BAR_FREECTX     2
-OSSL_FUNC_bar_freectx_fn * OSSL_FUNC_bar_freectx(const OSSL_DISPATCH *opf)
-{ return (OSSL_FUNC_bar_freectx_fn *)opf->function; }
-
-#define OSSL_FUNC_BAR_INIT        3
-OSSL_FUNC_bar_init_fn * OSSL_FUNC_bar_init(const OSSL_DISPATCH *opf)
-{ return (OSSL_FUNC_bar_init_fn *)opf->function; }
-
-#define OSSL_FUNC_BAR_UPDATE      4
-OSSL_FUNC_bar_update_fn * OSSL_FUNC_bar_update(const OSSL_DISPATCH *opf)
-{ return (OSSL_FUNC_bar_update_fn *)opf->function; }
-
-#define OSSL_FUNC_BAR_FINAL       5
-OSSL_FUNC_bar_final_fn * OSSL_FUNC_bar_final(const OSSL_DISPATCH *opf)
-{ return (OSSL_FUNC_bar_final_fn *)opf->function; }
-
-
-static const OSSL_DISPATCH foo_fns[] = {
-    { OSSL_FUNC_BAR_NEWCTX, (void (*)(void))foo_newctx },
-    { OSSL_FUNC_BAR_FREECTX, (void (*)(void))foo_freectx },
-    { OSSL_FUNC_BAR_INIT, (void (*)(void))foo_init},
-    { OSSL_FUNC_BAR_UPDATE, (void (*)(void))foo_update },
-    { OSSL_FUNC_BAR_FINAL, (void (*)(void))foo_final},
-    { 0, NULL }
-};
-
-static const OSSL_ALGORITHM bars[] = {
-    { "FOO", "provider=chumbawamba", foo_fns },
-    { NULL, NULL, NULL }
-};
-
-const OSSL_ALGORITHM *p_query(void *provctx, int operation_id,
-                                     int *no_store)
-{
-    switch (operation_id) {
-    case OSSL_OP_BAR:
-        return bars;
-    }
-    return NULL;
-}
-
-const OSSL_ITEM *p_reasons(void *provctx)
-{
-    return reasons;
-}
-
-void p_teardown(void *provctx)
-{
-    free(provctx);
-}
-
-static const OSSL_DISPATCH prov_fns[] = {
-    { OSSL_FUNC_PROVIDER_TEARDOWN, (void (*)(void))p_teardown },
-    { OSSL_FUNC_PROVIDER_QUERY_OPERATION, (void (*)(void))p_query },
-    { OSSL_FUNC_PROVIDER_GET_REASON_STRINGS, (void (*)(void))p_reasons },
-    { 0, NULL }
-};
-
-int OSSL_provider_init(const OSSL_CORE_HANDLE *handle,
-                       const OSSL_DISPATCH *in,
-                       const OSSL_DISPATCH **out,
-                       void **provctx)
-{
-    struct prov_ctx_st *pctx = NULL;
-
-    for (; in->function_id != 0; in++)
-        switch (in->function_id) {
-        //case OSSL_FUNC_CORE_PUT_ERROR:
-        //    break;
-        }
-
-    *out = prov_fns;
-
-    if ((pctx = (struct prov_ctx_st*)malloc(sizeof(*pctx))) == NULL) {
-        /*
-         * ALEA IACTA EST, if the core retrieves the reason table
-         * regardless, that string will be displayed, otherwise not.
-         */
-        //c_put_error(handle, E_MALLOC, __FILE__, __LINE__);
-        return 0;
-    }
-    pctx->handle = (OSSL_CORE_HANDLE *) handle;
-    return 1;
-}
-
