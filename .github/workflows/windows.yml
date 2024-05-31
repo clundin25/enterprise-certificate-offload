@@ -47,5 +47,5 @@ jobs:
           .\scripts\windows\windows_setup.ps1
       - uses: actions/upload-artifact@v4
         with:
-        path:
-          build/libecp_provider.dll
+          path:
+            build/libecp_provider.dll
