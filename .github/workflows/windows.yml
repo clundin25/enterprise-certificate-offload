@@ -45,8 +45,14 @@ jobs:
           .\scripts\windows\create_client_creds.ps1
           .\scripts\windows\create_server_creds.ps1
           .\scripts\windows\windows_setup.ps1
-          # Tests are currently not passing on the windows CI.
-          #       - name: Test mTLS Python
-          #         run: |
-          #           Start-Process -FilePath .\scripts\start_mtls_https_server.ps1
-          #           .\tests\test_mtls_py.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+        # A file, directory or wildcard pattern that describes what to upload
+        # Required.
+        path:
+          build\libecp_provider.dll
+              # Tests are currently not passing on the windows CI.
+              #       - name: Test mTLS Python
+              #         run: |
+              #           Start-Process -FilePath .\scripts\start_mtls_https_server.ps1
+              #           .\tests\test_mtls_py.ps1
