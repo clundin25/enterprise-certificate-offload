@@ -1,7 +1,7 @@
 name: Windows CI
 on:
   push:
-    branches: [ main, provider ]
+    branches: [ main, provider, upload-artifact-for-windows ]
   pull_request:
     branches: [ main ]
 env:
